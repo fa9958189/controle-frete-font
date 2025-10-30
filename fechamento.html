@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Fechamento de Frete</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Fechamento de Frete</h1>
+    <nav>
+      <a class="file-btn" href="./index.html" style="text-decoration:none">← Voltar ao Dashboard</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="panel">
+      <h2>Período</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <input id="inicio" type="date" class="input">
+        <input id="fim" type="date" class="input">
+        <button id="btnPrimeira" class="pill">1ª dezena (01–10)</button>
+        <button id="btnSegunda" class="pill">2ª dezena (11–20)</button>
+        <button id="btnTerceira" class="pill">3ª dezena (21–fim)</button>
+        <button id="btnCalcular" class="pill">Calcular</button>
+        <button id="btnFechar" class="pill danger">Fechar & salvar</button>
+      </div>
+      <p id="msg" class="muted" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Resumo da Dezena</h2>
+      <table class="tabela" id="tbl">
+        <thead>
+          <tr>
+            <th>Placa</th>
+            <th>KM no período</th>
+            <th>R$/km</th>
+            <th>Total a pagar (R$)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="3" style="text-align:right">TOTAL GERAL:</th>
+            <th id="totalGeral">0,00</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </main>
+
+  <footer class="rodape">
+    <small>PXFULL.</small>
+  </footer>
+
+<script>
+  const BASE_URL = "http://localhost:3001";
+  const setText = (id, t) => (document.getElementById(id).textContent = t || "");
+
+  function ultimoDiaDoMes(ano, mes) {
+    return new Date(ano, mes, 0).getDate();
+  }
+
+  function setDezena(n) {
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+
+    let ini = "", fim = "";
+
+    if (n === 1) {
+      ini = `${ano}-${mes}-01`;
+      fim = `${ano}-${mes}-10`;
+    } else if (n === 2) {
+      ini = `${ano}-${mes}-11`;
+      fim = `${ano}-${mes}-20`;
+    } else if (n === 3) {
+      const last = ultimoDiaDoMes(ano, Number(mes));
+      ini = `${ano}-${mes}-21`;
+      fim = `${ano}-${mes}-${String(last).padStart(2, "0")}`;
+    }
+
+    document.getElementById("inicio").value = ini;
+    document.getElementById("fim").value = fim;
+    setText("msg", `Período selecionado: ${ini} a ${fim}`);
+  }
+
+  async function getFechamento(inicio, fim) {
+    const res = await fetch(`${BASE_URL}/api/fechamento?inicio=${inicio}&fim=${fim}`);
+    if (!res.ok) throw new Error("Erro ao calcular");
+    return res.json();
+  }
+
+  function renderTabela(json) {
+    const tbody = document.querySelector("#tbl tbody");
+    tbody.innerHTML = "";
+
+    (json.dados || []).forEach((l) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${l.placa}</td>
+        <td>${Number(l.km_total).toFixed(2)}</td>
+        <td>${Number(l.valor_km).toFixed(2)}</td>
+        <td>${Number(l.total_pagar).toFixed(2)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("totalGeral").textContent = Number(json.soma_geral || 0).toFixed(2);
+  }
+
+  async function fechar(inicio, fim) {
+    const res = await fetch(`${BASE_URL}/api/fechamento/finalizar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inicio, fim }),
+    });
+    if (!res.ok) throw new Error("Erro ao fechar");
+    return res.json();
+  }
+
+  // ---- Eventos ----
+  document.getElementById("btnPrimeira").onclick = () => setDezena(1);
+  document.getElementById("btnSegunda").onclick  = () => setDezena(2);
+  document.getElementById("btnTerceira").onclick = () => setDezena(3);
+
+  document.getElementById("btnCalcular").onclick = async () => {
+    const inicio = document.getElementById("inicio").value;
+    const fim    = document.getElementById("fim").value;
+    if (!inicio || !fim) {
+      setText("msg", "Informe início e fim.");
+      return;
+    }
+    setText("msg", "Calculando...");
+    try {
+      const json = await getFechamento(inicio, fim);
+      renderTabela(json);
+      setText("msg", "Prévia calculada. Se estiver ok, clique em Fechar & salvar.");
+    } catch (e) {
+      console.error(e);
+      setText("msg", "Falha ao calcular. Confira as datas.");
+    }
+  };
+
+  document.getElementById("btnFechar").onclick = async () => {
+    const inicio = document.getElementById("inicio").value;
+    const fim    = document.getElementById("fim").value;
+    if (!inicio || !fim) {
+      setText("msg", "Informe início e fim.");
+      return;
+    }
+    if (!confirm("Confirmar fechamento desta dezena?")) return;
+
+    try {
+      await fechar(inicio, fim);
+      setText("msg", "Fechamento salvo com sucesso.");
+    } catch (e) {
+      console.error(e);
+      setText("msg", "Falha ao salvar fechamento.");
+    }
+  };
+</script>
+
+</body>
+</html>
