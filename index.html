@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Controle de Frete – Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Controle de Frete</h1>
+    <label class="file-btn">
+      <input id="fileInput" type="file" accept=".html,.htm" multiple>
+      Importar relatório (.html)
+    </label>
+  </header>
+
+  <main class="container">
+    <section class="cards">
+      <div class="card">
+        <h3>Total de Placas</h3>
+        <p id="totalPlacas">0</p>
+      </div>
+      <div class="card">
+        <h3>Total KM Rodado</h3>
+        <p id="totalKm">0 km</p>
+      </div>
+      <div class="card">
+        <h3>Odômetro (último arquivo)</h3>
+        <p id="odometro">—</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>KM por Placa</h2>
+        <canvas id="kmChart" height="120"></canvas>
+
+        <hr style="border-color:#2a2f3a; margin:14px 0;">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:10px;align-items:center">
+          <div>
+            <label for="placaSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Placa:</label>
+            <select id="placaSelect" class="input"></select>
+          </div>
+          <div>
+            <label for="viagemSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Viagem:</label>
+            <select id="viagemSelect" class="input"></select>
+          </div>
+
+          <button id="btnCarregar" class="pill">Carregar viagem</button>
+          <button id="btnExcluir" class="pill danger">Excluir viagem</button>
+          <button id="btnLimpar" class="pill outline">Limpar TUDO</button>
+        </div>
+
+        <p id="statusInfo" style="color:#a9b0bb;margin-top:8px;font-size:13px">Nenhuma viagem salva ainda.</p>
+      </div>
+
+
+      <div class="panel">
+        <h2>Detalhes</h2>
+        <table class="tabela" id="tabela">
+          <thead>
+            <tr>
+              <th>Placa</th>
+              <th>Veículo/Dispositivo</th>
+              <th>KM do percurso</th>
+              <th>Período</th>
+              <th>KM rodado</th> <!-- era Odômetro -->
+              <th>Viagem</th>
+          </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <small>PXFULL.</small>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
