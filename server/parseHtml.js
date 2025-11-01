@@ -1,32 +1,52 @@
-function toNumber(txt = "") {
-  const n = String(txt).replace(/\./g, '').replace(',', '.').match(/[\d.]+/g);
-  return n ? parseFloat(n.join('')) : 0;
-}
-function extractPlaca(dispositivoTxt = "") {
-  const m = String(dispositivoTxt).toUpperCase().match(/[A-Z0-9]{7}/);
-  return m ? m[0] : "";
-}
-
+// server/parseHtml.js
 export function parseReport(htmlText) {
-  // Parser simples por string (Node não tem DOMParser nativo).
-  // Como seu relatório tem th/td previsíveis, buscamos por rótulos.
-  const getAfter = (label) => {
-    const idx = htmlText.toLowerCase().indexOf(label.toLowerCase());
-    if (idx === -1) return "";
-    const sub = htmlText.slice(idx, idx + 800); // janela
-    // pega conteúdo entre <td> após o <th> que contém o label
-    const td = sub.match(/<td[^>]*>([\s\S]*?)<\/td>/i);
-    return td ? td[1].replace(/<[^>]+>/g, '').trim() : "";
+  const pick = (re) => {
+    const m = htmlText.match(re);
+    return m ? m[1].trim() : "";
   };
 
-  const dispositivo = getAfter("Dispositivo");
-  const placa = extractPlaca(dispositivo);
-  const distanciaTxt = getAfter("Distância do percurso");
-  const kmPercurso = toNumber(distanciaTxt);
-  const odoTxt = getAfter("Odômetro");
-  const odometro = toNumber(odoTxt);
-  const inicio = getAfter("Início da rota") || getAfter("Início");
-  const fim = getAfter("Final da rota") || getAfter("Final");
+  const toISO = (s) => {
+    // DD-MM-YYYY HH:MM:SS  ->  YYYY-MM-DD HH:MM:SS
+    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}:\d{2}:\d{2})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]} ${m[4]}`;
+    return s; // já está em ISO
+  };
 
-  return { placa, dispositivo, kmPercurso, inicio, fim, odometro };
+  const toNumber = (s) => {
+    if (!s) return 0;
+    // remove texto e espaços
+    let t = s.replace(/[^\d.,-]/g, "");
+    // se tiver vírgula, trata vírgula como decimal e remove os pontos
+    if (t.includes(",")) {
+      t = t.replace(/\./g, "").replace(",", ".");
+    }
+    return parseFloat(t) || 0;
+  };
+
+  // Dispositivo: "VW ... // ONS1H25 // LKJ ..."
+  const dispositivo = pick(/Dispositivo:<\/th>\s*<td[^>]*>([^<]+)<\/td>/i);
+  let placa = dispositivo.split("//")[1] || dispositivo;
+  placa = placa.trim().replace(/\s+/g, ""); // tira espaços internos
+
+  const inicioBr = pick(/In[íi]cio da rota:<\/th>\s*<td[^>]*>([^<]+)<\/td>/i);
+  const fimBr    = pick(/Final da rota:<\/th>\s*<td[^>]*>([^<]+)<\/td>/i);
+
+  const distanciaTxt = pick(/Dist[âa]ncia do percurso:<\/th>\s*<td[^>]*>([^<]+)<\/td>/i);
+  const odometroTxt  = pick(/Od[ôo]metro:<\/th>\s*<td[^>]*>([^<]+)<\/td>/i);
+
+  const data = {
+    placa,
+    veiculo: dispositivo,
+    inicio: toISO(inicioBr),
+    fim: toISO(fimBr),
+    kmPercurso: toNumber(distanciaTxt),
+    odometro: toNumber(odometroTxt),
+  };
+
+  // validação mínima
+  if (!data.inicio || !data.fim || !data.placa) {
+    throw new Error("Relatório incompleto: inicio/fim/placa não detectados.");
+  }
+
+  return data;
 }
