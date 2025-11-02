@@ -30,6 +30,20 @@
     </div>
 
     <div class="panel">
+      <h2>Valor do km por placa</h2>
+      <table class="tabela" id="tblRates">
+        <thead>
+          <tr>
+            <th>Placa</th>
+            <th>Valor do Km Rodado (R$)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="ratesMsg" class="muted" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
       <h2>Resumo da Dezena</h2>
       <table class="tabela" id="tbl">
         <thead>
@@ -49,6 +63,24 @@
         </tfoot>
       </table>
     </div>
+
+    <div class="panel">
+      <h2>Fechamentos salvos</h2>
+      <table class="tabela" id="tblHistorico">
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Data de fechamento</th>
+            <th>Placas</th>
+            <th>KM total</th>
+            <th>Total geral (R$)</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="historicoMsg" class="muted" style="margin-top:8px"></p>
+    </div>
   </main>
 
   <footer class="rodape">
@@ -58,6 +90,7 @@
 <script>
   const BASE_URL = "http://localhost:3001";
   const setText = (id, t) => (document.getElementById(id).textContent = t || "");
+  let ratesCache = new Map();
 
   function ultimoDiaDoMes(ano, mes) {
     return new Date(ano, mes, 0).getDate();
@@ -93,22 +126,136 @@
     return res.json();
   }
 
-  function renderTabela(json) {
-    const tbody = document.querySelector("#tbl tbody");
-    tbody.innerHTML = "";
+  async function loadRates() {
+    try {
+      setText("ratesMsg", "Carregando placas e tarifas...");
+      const [placasRes, ratesRes] = await Promise.all([
+        fetch(`${BASE_URL}/api/plates`),
+        fetch(`${BASE_URL}/api/rates`),
+      ]);
 
-    (json.dados || []).forEach((l) => {
+      if (!placasRes.ok || !ratesRes.ok) {
+        throw new Error("Falha ao carregar dados");
+      }
+
+      const placas = await placasRes.json();
+      const rates = await ratesRes.json();
+      renderRatesTable(placas, rates);
+
+      if (placas.length) {
+        setText(
+          "ratesMsg",
+          "Edite o valor do km e pressione Enter ou saia do campo para salvar."
+        );
+      } else {
+        setText("ratesMsg", "Nenhuma placa cadastrada até o momento.");
+      }
+    } catch (e) {
+      console.error(e);
+      setText(
+        "ratesMsg",
+        "Falha ao carregar as placas. Recarregue a página para tentar novamente."
+      );
+    }
+  }
+
+  function renderRatesTable(placas, rates) {
+    const tbody = document.querySelector("#tblRates tbody");
+    tbody.innerHTML = "";
+    ratesCache = new Map(rates.map((r) => [r.placa, Number(r.valor_km)]));
+
+    if (!placas.length) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${l.placa}</td>
-        <td>${Number(l.km_total).toFixed(2)}</td>
-        <td>${Number(l.valor_km).toFixed(2)}</td>
-        <td>${Number(l.total_pagar).toFixed(2)}</td>
+        <td colspan="2" style="text-align:center;color:var(--muted)">
+          Nenhuma placa encontrada.
+        </td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    placas.forEach((placa) => {
+      const tr = document.createElement("tr");
+      const valor = ratesCache.has(placa)
+        ? Number(ratesCache.get(placa) || 0).toFixed(2)
+        : "";
+      tr.innerHTML = `
+        <td>${placa}</td>
+        <td>
+          <input
+            type="number"
+            class="input"
+            step="0.01"
+            min="0"
+            data-placa="${placa}"
+            value="${valor}"
+            placeholder="0,00"
+            style="max-width:140px"
+          />
+        </td>
       `;
       tbody.appendChild(tr);
     });
+  }
 
-    document.getElementById("totalGeral").textContent = Number(json.soma_geral || 0).toFixed(2);
+  function parseValorKm(raw) {
+    if (raw == null) return NaN;
+    const normalized = String(raw).trim().replace(",", ".");
+    if (!normalized) return NaN;
+    const value = Number(normalized);
+    if (!Number.isFinite(value) || value < 0) return NaN;
+    return value;
+  }
+
+  async function salvarRate(placa, valor) {
+    const res = await fetch(`${BASE_URL}/api/rate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placa, valor_km: valor }),
+    });
+    if (!res.ok) throw new Error("Erro ao salvar rate");
+  }
+
+  async function atualizarResumoSePossivel() {
+    const inicio = document.getElementById("inicio").value;
+    const fim = document.getElementById("fim").value;
+    if (!inicio || !fim) return;
+    try {
+      const json = await getFechamento(inicio, fim);
+      renderTabela(json);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function renderTabela(json) {
+    const tbody = document.querySelector("#tbl tbody");
+    const dados = json?.dados || [];
+    tbody.innerHTML = "";
+
+    if (!dados.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="4" style="text-align:center;color:var(--muted)">
+          Nenhuma viagem encontrada para o período informado.
+        </td>
+      `;
+      tbody.appendChild(tr);
+    } else {
+      dados.forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${l.placa}</td>
+          <td>${Number(l.km_total).toFixed(2)}</td>
+          <td>${Number(l.valor_km).toFixed(2)}</td>
+          <td>${Number(l.total_pagar).toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById("totalGeral").textContent = Number(json?.soma_geral || 0).toFixed(2);
   }
 
   async function fechar(inicio, fim) {
@@ -121,10 +268,147 @@
     return res.json();
   }
 
+  async function loadHistorico() {
+    try {
+      setText("historicoMsg", "Carregando fechamentos...");
+      const res = await fetch(`${BASE_URL}/api/settlements`);
+      if (!res.ok) throw new Error("Erro ao carregar histórico");
+      const json = await res.json();
+      renderHistorico(json);
+      if (!json.length) {
+        setText("historicoMsg", "Nenhum fechamento foi salvo até o momento.");
+      } else {
+        setText(
+          "historicoMsg",
+          "Clique em excluir para remover um fechamento e recalcular se necessário."
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      setText(
+        "historicoMsg",
+        "Falha ao carregar os fechamentos. Recarregue a página para tentar novamente."
+      );
+    }
+  }
+
+  function formatarDataBr(dataIso) {
+    if (!dataIso) return "-";
+    const data = new Date(dataIso.replace(" ", "T"));
+    if (Number.isNaN(data.getTime())) return dataIso;
+    return data.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function renderHistorico(lista) {
+    const tbody = document.querySelector("#tblHistorico tbody");
+    tbody.innerHTML = "";
+
+    if (!lista.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="6" style="text-align:center;color:var(--muted)">
+          Nenhum fechamento registrado.
+        </td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    lista.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${item.inicio} a ${item.fim}</td>
+        <td>${formatarDataBr(item.criado_em)}</td>
+        <td>${item.total_placas}</td>
+        <td>${Number(item.km_total).toFixed(2)}</td>
+        <td>${Number(item.total_pagar).toFixed(2)}</td>
+        <td>
+          <button
+            class="pill danger"
+            data-excluir
+            data-inicio="${item.inicio}"
+            data-fim="${item.fim}"
+            style="padding:4px 10px;font-size:0.85rem"
+          >
+            Excluir
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function excluirFechamento(inicio, fim) {
+    const url = new URL(`${BASE_URL}/api/settlements`);
+    url.searchParams.set("inicio", inicio);
+    url.searchParams.set("fim", fim);
+    const res = await fetch(url, { method: "DELETE" });
+    if (!res.ok) throw new Error("Erro ao excluir");
+    return res.json();
+  }
+
   // ---- Eventos ----
   document.getElementById("btnPrimeira").onclick = () => setDezena(1);
   document.getElementById("btnSegunda").onclick  = () => setDezena(2);
   document.getElementById("btnTerceira").onclick = () => setDezena(3);
+
+  const ratesTbody = document.querySelector("#tblRates tbody");
+
+  async function processRateInput(input) {
+    const placa = input.dataset.placa;
+    if (!placa) return;
+
+    const parsed = parseValorKm(input.value);
+    if (Number.isNaN(parsed)) {
+      setText(
+        "ratesMsg",
+        "Informe um número válido para o valor do km rodado."
+      );
+      input.focus();
+      return;
+    }
+
+    const atual = ratesCache.get(placa);
+    if (atual != null && Math.abs(atual - parsed) < 0.0001) {
+      input.value = parsed.toFixed(2);
+      return;
+    }
+
+    try {
+      await salvarRate(placa, parsed);
+      ratesCache.set(placa, parsed);
+      input.value = parsed.toFixed(2);
+      setText(
+        "ratesMsg",
+        `Valor do km da placa ${placa} atualizado para ${parsed.toFixed(2)}.`
+      );
+      await atualizarResumoSePossivel();
+    } catch (e) {
+      console.error(e);
+      setText(
+        "ratesMsg",
+        "Falha ao salvar o valor do km. Verifique a conexão e tente novamente."
+      );
+    }
+  }
+
+  ratesTbody.addEventListener("change", (ev) => {
+    if (ev.target.matches("input[data-placa]")) {
+      processRateInput(ev.target);
+    }
+  });
+
+  ratesTbody.addEventListener("keyup", (ev) => {
+    if (ev.key === "Enter" && ev.target.matches("input[data-placa]")) {
+      processRateInput(ev.target);
+    }
+  });
 
   document.getElementById("btnCalcular").onclick = async () => {
     const inicio = document.getElementById("inicio").value;
@@ -154,13 +438,54 @@
     if (!confirm("Confirmar fechamento desta dezena?")) return;
 
     try {
-      await fechar(inicio, fim);
-      setText("msg", "Fechamento salvo com sucesso.");
+      setText("msg", "Salvando fechamento...");
+      const json = await fechar(inicio, fim);
+      const dados = json?.inseridos || [];
+      const soma_geral = dados.reduce(
+        (s, item) => s + Number(item.total_pagar || 0),
+        0
+      );
+      renderTabela({ dados, soma_geral });
+      setText(
+        "msg",
+        dados.length
+          ? "Fechamento salvo com sucesso. Confira o resumo abaixo."
+          : "Fechamento salvo, porém nenhuma viagem foi encontrada nesse período."
+      );
+      await loadHistorico();
     } catch (e) {
       console.error(e);
       setText("msg", "Falha ao salvar fechamento.");
     }
   };
+
+  document
+    .querySelector("#tblHistorico tbody")
+    .addEventListener("click", async (ev) => {
+      if (!ev.target.matches("button[data-excluir]")) return;
+      const inicio = ev.target.getAttribute("data-inicio");
+      const fim = ev.target.getAttribute("data-fim");
+      if (!inicio || !fim) return;
+      if (!confirm(`Excluir o fechamento de ${inicio} a ${fim}?`)) return;
+      try {
+        setText("historicoMsg", "Excluindo fechamento...");
+        await excluirFechamento(inicio, fim);
+        await loadHistorico();
+        setText(
+          "historicoMsg",
+          "Fechamento excluído. Você pode recalcular e salvar novamente."
+        );
+      } catch (e) {
+        console.error(e);
+        setText(
+          "historicoMsg",
+          "Falha ao excluir o fechamento. Verifique a conexão e tente de novo."
+        );
+      }
+    });
+
+  loadRates();
+  loadHistorico();
 </script>
 
 </body>

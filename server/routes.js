@@ -211,4 +211,58 @@ router.post("/fechamento/finalizar", async (req, res) => {
   res.json({ ok: true, periodo: { inicio, fim }, inseridos });
 });
 
+router.get("/settlements", async (_req, res) => {
+  try {
+    const rows = await all(
+      `
+      SELECT
+        periodo_inicio AS inicio,
+        periodo_fim AS fim,
+        MIN(created_at) AS criado_em,
+        COUNT(DISTINCT placa) AS total_placas,
+        SUM(km_total) AS km_total,
+        SUM(total_pagar) AS total_pagar
+      FROM settlements
+      GROUP BY periodo_inicio, periodo_fim
+      ORDER BY MIN(created_at) DESC
+    `
+    );
+
+    const normalizado = rows.map((r) => ({
+      inicio: r.inicio,
+      fim: r.fim,
+      criado_em: r.criado_em,
+      total_placas: Number(r.total_placas || 0),
+      km_total: Number(Number(r.km_total || 0).toFixed(2)),
+      total_pagar: Number(Number(r.total_pagar || 0).toFixed(2)),
+    }));
+
+    res.json(normalizado);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Falha ao carregar fechamentos" });
+  }
+});
+
+router.delete("/settlements", async (req, res) => {
+  const { inicio, fim } = req.query;
+  if (!inicio || !fim) {
+    return res
+      .status(400)
+      .json({ error: "inicio e fim são obrigatórios (YYYY-MM-DD)" });
+  }
+
+  try {
+    const result = await run(
+      `DELETE FROM settlements WHERE periodo_inicio = ? AND periodo_fim = ?`,
+      [inicio, fim]
+    );
+
+    res.json({ ok: true, removidos: result.changes || 0 });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Falha ao excluir fechamento" });
+  }
+});
+
 export default router;
