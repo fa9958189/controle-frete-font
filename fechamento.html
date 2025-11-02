@@ -452,13 +452,14 @@
           ? "Fechamento salvo com sucesso. Confira o resumo abaixo."
           : "Fechamento salvo, porém nenhuma viagem foi encontrada nesse período."
       );
-      await loadHistorico();
+      await loadHistorico(); // mantém para atualizar a grade de históricos
     } catch (e) {
       console.error(e);
       setText("msg", "Falha ao salvar fechamento.");
     }
   };
 
+  // Listener para excluir itens do histórico
   document
     .querySelector("#tblHistorico tbody")
     .addEventListener("click", async (ev) => {
@@ -484,6 +485,7 @@
       }
     });
 
+  // carregar tabelas iniciais
   loadRates();
   loadHistorico();
 </script>
