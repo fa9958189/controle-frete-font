@@ -63,6 +63,24 @@
         </tfoot>
       </table>
     </div>
+
+    <div class="panel">
+      <h2>Fechamentos salvos</h2>
+      <table class="tabela" id="tblHistorico">
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Data de fechamento</th>
+            <th>Placas</th>
+            <th>KM total</th>
+            <th>Total geral (R$)</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="historicoMsg" class="muted" style="margin-top:8px"></p>
+    </div>
   </main>
 
   <footer class="rodape">
@@ -250,6 +268,91 @@
     return res.json();
   }
 
+  async function loadHistorico() {
+    try {
+      setText("historicoMsg", "Carregando fechamentos...");
+      const res = await fetch(`${BASE_URL}/api/settlements`);
+      if (!res.ok) throw new Error("Erro ao carregar histórico");
+      const json = await res.json();
+      renderHistorico(json);
+      if (!json.length) {
+        setText("historicoMsg", "Nenhum fechamento foi salvo até o momento.");
+      } else {
+        setText(
+          "historicoMsg",
+          "Clique em excluir para remover um fechamento e recalcular se necessário."
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      setText(
+        "historicoMsg",
+        "Falha ao carregar os fechamentos. Recarregue a página para tentar novamente."
+      );
+    }
+  }
+
+  function formatarDataBr(dataIso) {
+    if (!dataIso) return "-";
+    const data = new Date(dataIso.replace(" ", "T"));
+    if (Number.isNaN(data.getTime())) return dataIso;
+    return data.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function renderHistorico(lista) {
+    const tbody = document.querySelector("#tblHistorico tbody");
+    tbody.innerHTML = "";
+
+    if (!lista.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="6" style="text-align:center;color:var(--muted)">
+          Nenhum fechamento registrado.
+        </td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    lista.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${item.inicio} a ${item.fim}</td>
+        <td>${formatarDataBr(item.criado_em)}</td>
+        <td>${item.total_placas}</td>
+        <td>${Number(item.km_total).toFixed(2)}</td>
+        <td>${Number(item.total_pagar).toFixed(2)}</td>
+        <td>
+          <button
+            class="pill danger"
+            data-excluir
+            data-inicio="${item.inicio}"
+            data-fim="${item.fim}"
+            style="padding:4px 10px;font-size:0.85rem"
+          >
+            Excluir
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function excluirFechamento(inicio, fim) {
+    const url = new URL(`${BASE_URL}/api/settlements`);
+    url.searchParams.set("inicio", inicio);
+    url.searchParams.set("fim", fim);
+    const res = await fetch(url, { method: "DELETE" });
+    if (!res.ok) throw new Error("Erro ao excluir");
+    return res.json();
+  }
+
   // ---- Eventos ----
   document.getElementById("btnPrimeira").onclick = () => setDezena(1);
   document.getElementById("btnSegunda").onclick  = () => setDezena(2);
@@ -349,13 +452,42 @@
           ? "Fechamento salvo com sucesso. Confira o resumo abaixo."
           : "Fechamento salvo, porém nenhuma viagem foi encontrada nesse período."
       );
+      await loadHistorico(); // mantém para atualizar a grade de históricos
     } catch (e) {
       console.error(e);
       setText("msg", "Falha ao salvar fechamento.");
     }
   };
 
+  // Listener para excluir itens do histórico
+  document
+    .querySelector("#tblHistorico tbody")
+    .addEventListener("click", async (ev) => {
+      if (!ev.target.matches("button[data-excluir]")) return;
+      const inicio = ev.target.getAttribute("data-inicio");
+      const fim = ev.target.getAttribute("data-fim");
+      if (!inicio || !fim) return;
+      if (!confirm(`Excluir o fechamento de ${inicio} a ${fim}?`)) return;
+      try {
+        setText("historicoMsg", "Excluindo fechamento...");
+        await excluirFechamento(inicio, fim);
+        await loadHistorico();
+        setText(
+          "historicoMsg",
+          "Fechamento excluído. Você pode recalcular e salvar novamente."
+        );
+      } catch (e) {
+        console.error(e);
+        setText(
+          "historicoMsg",
+          "Falha ao excluir o fechamento. Verifique a conexão e tente de novo."
+        );
+      }
+    });
+
+  // carregar tabelas iniciais
   loadRates();
+  loadHistorico();
 </script>
 
 </body>
