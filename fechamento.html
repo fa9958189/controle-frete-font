@@ -30,6 +30,20 @@
     </div>
 
     <div class="panel">
+      <h2>Valor do km por placa</h2>
+      <table class="tabela" id="tblRates">
+        <thead>
+          <tr>
+            <th>Placa</th>
+            <th>Valor do Km Rodado (R$)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="ratesMsg" class="muted" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
       <h2>Resumo da Dezena</h2>
       <table class="tabela" id="tbl">
         <thead>
@@ -58,6 +72,7 @@
 <script>
   const BASE_URL = "http://localhost:3001";
   const setText = (id, t) => (document.getElementById(id).textContent = t || "");
+  let ratesCache = new Map();
 
   function ultimoDiaDoMes(ano, mes) {
     return new Date(ano, mes, 0).getDate();
@@ -91,6 +106,109 @@
     const res = await fetch(`${BASE_URL}/api/fechamento?inicio=${inicio}&fim=${fim}`);
     if (!res.ok) throw new Error("Erro ao calcular");
     return res.json();
+  }
+
+  async function loadRates() {
+    try {
+      setText("ratesMsg", "Carregando placas e tarifas...");
+      const [placasRes, ratesRes] = await Promise.all([
+        fetch(`${BASE_URL}/api/plates`),
+        fetch(`${BASE_URL}/api/rates`),
+      ]);
+
+      if (!placasRes.ok || !ratesRes.ok) {
+        throw new Error("Falha ao carregar dados");
+      }
+
+      const placas = await placasRes.json();
+      const rates = await ratesRes.json();
+      renderRatesTable(placas, rates);
+
+      if (placas.length) {
+        setText(
+          "ratesMsg",
+          "Edite o valor do km e pressione Enter ou saia do campo para salvar."
+        );
+      } else {
+        setText("ratesMsg", "Nenhuma placa cadastrada até o momento.");
+      }
+    } catch (e) {
+      console.error(e);
+      setText(
+        "ratesMsg",
+        "Falha ao carregar as placas. Recarregue a página para tentar novamente."
+      );
+    }
+  }
+
+  function renderRatesTable(placas, rates) {
+    const tbody = document.querySelector("#tblRates tbody");
+    tbody.innerHTML = "";
+    ratesCache = new Map(rates.map((r) => [r.placa, Number(r.valor_km)]));
+
+    if (!placas.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td colspan="2" style="text-align:center;color:var(--muted)">
+          Nenhuma placa encontrada.
+        </td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    placas.forEach((placa) => {
+      const tr = document.createElement("tr");
+      const valor = ratesCache.has(placa)
+        ? Number(ratesCache.get(placa) || 0).toFixed(2)
+        : "";
+      tr.innerHTML = `
+        <td>${placa}</td>
+        <td>
+          <input
+            type="number"
+            class="input"
+            step="0.01"
+            min="0"
+            data-placa="${placa}"
+            value="${valor}"
+            placeholder="0,00"
+            style="max-width:140px"
+          />
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function parseValorKm(raw) {
+    if (raw == null) return NaN;
+    const normalized = String(raw).trim().replace(",", ".");
+    if (!normalized) return NaN;
+    const value = Number(normalized);
+    if (!Number.isFinite(value) || value < 0) return NaN;
+    return value;
+  }
+
+  async function salvarRate(placa, valor) {
+    const res = await fetch(`${BASE_URL}/api/rate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placa, valor_km: valor }),
+    });
+    if (!res.ok) throw new Error("Erro ao salvar rate");
+  }
+
+  async function atualizarResumoSePossivel() {
+    const inicio = document.getElementById("inicio").value;
+    const fim = document.getElementById("fim").value;
+    if (!inicio || !fim) return;
+    try {
+      const json = await getFechamento(inicio, fim);
+      renderTabela(json);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   function renderTabela(json) {
@@ -136,6 +254,58 @@
   document.getElementById("btnPrimeira").onclick = () => setDezena(1);
   document.getElementById("btnSegunda").onclick  = () => setDezena(2);
   document.getElementById("btnTerceira").onclick = () => setDezena(3);
+
+  const ratesTbody = document.querySelector("#tblRates tbody");
+
+  async function processRateInput(input) {
+    const placa = input.dataset.placa;
+    if (!placa) return;
+
+    const parsed = parseValorKm(input.value);
+    if (Number.isNaN(parsed)) {
+      setText(
+        "ratesMsg",
+        "Informe um número válido para o valor do km rodado."
+      );
+      input.focus();
+      return;
+    }
+
+    const atual = ratesCache.get(placa);
+    if (atual != null && Math.abs(atual - parsed) < 0.0001) {
+      input.value = parsed.toFixed(2);
+      return;
+    }
+
+    try {
+      await salvarRate(placa, parsed);
+      ratesCache.set(placa, parsed);
+      input.value = parsed.toFixed(2);
+      setText(
+        "ratesMsg",
+        `Valor do km da placa ${placa} atualizado para ${parsed.toFixed(2)}.`
+      );
+      await atualizarResumoSePossivel();
+    } catch (e) {
+      console.error(e);
+      setText(
+        "ratesMsg",
+        "Falha ao salvar o valor do km. Verifique a conexão e tente novamente."
+      );
+    }
+  }
+
+  ratesTbody.addEventListener("change", (ev) => {
+    if (ev.target.matches("input[data-placa]")) {
+      processRateInput(ev.target);
+    }
+  });
+
+  ratesTbody.addEventListener("keyup", (ev) => {
+    if (ev.key === "Enter" && ev.target.matches("input[data-placa]")) {
+      processRateInput(ev.target);
+    }
+  });
 
   document.getElementById("btnCalcular").onclick = async () => {
     const inicio = document.getElementById("inicio").value;
@@ -184,6 +354,8 @@
       setText("msg", "Falha ao salvar fechamento.");
     }
   };
+
+  loadRates();
 </script>
 
 </body>
