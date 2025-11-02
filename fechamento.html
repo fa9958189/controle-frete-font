@@ -95,20 +95,31 @@
 
   function renderTabela(json) {
     const tbody = document.querySelector("#tbl tbody");
+    const dados = json?.dados || [];
     tbody.innerHTML = "";
 
-    (json.dados || []).forEach((l) => {
+    if (!dados.length) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${l.placa}</td>
-        <td>${Number(l.km_total).toFixed(2)}</td>
-        <td>${Number(l.valor_km).toFixed(2)}</td>
-        <td>${Number(l.total_pagar).toFixed(2)}</td>
+        <td colspan="4" style="text-align:center;color:var(--muted)">
+          Nenhuma viagem encontrada para o período informado.
+        </td>
       `;
       tbody.appendChild(tr);
-    });
+    } else {
+      dados.forEach((l) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${l.placa}</td>
+          <td>${Number(l.km_total).toFixed(2)}</td>
+          <td>${Number(l.valor_km).toFixed(2)}</td>
+          <td>${Number(l.total_pagar).toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
 
-    document.getElementById("totalGeral").textContent = Number(json.soma_geral || 0).toFixed(2);
+    document.getElementById("totalGeral").textContent = Number(json?.soma_geral || 0).toFixed(2);
   }
 
   async function fechar(inicio, fim) {
@@ -154,8 +165,20 @@
     if (!confirm("Confirmar fechamento desta dezena?")) return;
 
     try {
-      await fechar(inicio, fim);
-      setText("msg", "Fechamento salvo com sucesso.");
+      setText("msg", "Salvando fechamento...");
+      const json = await fechar(inicio, fim);
+      const dados = json?.inseridos || [];
+      const soma_geral = dados.reduce(
+        (s, item) => s + Number(item.total_pagar || 0),
+        0
+      );
+      renderTabela({ dados, soma_geral });
+      setText(
+        "msg",
+        dados.length
+          ? "Fechamento salvo com sucesso. Confira o resumo abaixo."
+          : "Fechamento salvo, porém nenhuma viagem foi encontrada nesse período."
+      );
     } catch (e) {
       console.error(e);
       setText("msg", "Falha ao salvar fechamento.");
