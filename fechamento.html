@@ -143,19 +143,13 @@
       renderRatesTable(placas, rates);
 
       if (placas.length) {
-        setText(
-          "ratesMsg",
-          "Edite o valor do km e pressione Enter ou saia do campo para salvar."
-        );
+        setText("ratesMsg","Edite o valor do km e pressione Enter ou saia do campo para salvar.");
       } else {
         setText("ratesMsg", "Nenhuma placa cadastrada até o momento.");
       }
     } catch (e) {
       console.error(e);
-      setText(
-        "ratesMsg",
-        "Falha ao carregar as placas. Recarregue a página para tentar novamente."
-      );
+      setText("ratesMsg","Falha ao carregar as placas. Recarregue a página para tentar novamente.");
     }
   }
 
@@ -177,9 +171,7 @@
 
     placas.forEach((placa) => {
       const tr = document.createElement("tr");
-      const valor = ratesCache.has(placa)
-        ? Number(ratesCache.get(placa) || 0).toFixed(2)
-        : "";
+      const valor = ratesCache.has(placa) ? Number(ratesCache.get(placa) || 0).toFixed(2) : "";
       tr.innerHTML = `
         <td>${placa}</td>
         <td>
@@ -278,17 +270,11 @@
       if (!json.length) {
         setText("historicoMsg", "Nenhum fechamento foi salvo até o momento.");
       } else {
-        setText(
-          "historicoMsg",
-          "Clique em excluir para remover um fechamento e recalcular se necessário."
-        );
+        setText("historicoMsg","Clique em excluir para remover um fechamento e recalcular se necessário.");
       }
     } catch (e) {
       console.error(e);
-      setText(
-        "historicoMsg",
-        "Falha ao carregar os fechamentos. Recarregue a página para tentar novamente."
-      );
+      setText("historicoMsg","Falha ao carregar os fechamentos. Recarregue a página para tentar novamente.");
     }
   }
 
@@ -328,7 +314,16 @@
         <td>${item.total_placas}</td>
         <td>${Number(item.km_total).toFixed(2)}</td>
         <td>${Number(item.total_pagar).toFixed(2)}</td>
-        <td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+          <button
+            class="pill"
+            data-relatorio
+            data-inicio="${item.inicio}"
+            data-fim="${item.fim}"
+            style="padding:4px 10px;font-size:0.85rem"
+          >
+            Imprimir relatório
+          </button>
           <button
             class="pill danger"
             data-excluir
@@ -353,6 +348,25 @@
     return res.json();
   }
 
+  // baixar PDF do relatório do fechamento
+  async function baixarRelatorio(inicio, fim) {
+    const url = new URL(`${BASE_URL}/api/settlements/report`);
+    url.searchParams.set("inicio", inicio);
+    url.searchParams.set("fim", fim);
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Erro ao gerar relatório");
+
+    const blob = await res.blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `fechamento-${inicio}-a-${fim}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  }
+
   // ---- Eventos ----
   document.getElementById("btnPrimeira").onclick = () => setDezena(1);
   document.getElementById("btnSegunda").onclick  = () => setDezena(2);
@@ -366,10 +380,7 @@
 
     const parsed = parseValorKm(input.value);
     if (Number.isNaN(parsed)) {
-      setText(
-        "ratesMsg",
-        "Informe um número válido para o valor do km rodado."
-      );
+      setText("ratesMsg","Informe um número válido para o valor do km rodado.");
       input.focus();
       return;
     }
@@ -384,17 +395,11 @@
       await salvarRate(placa, parsed);
       ratesCache.set(placa, parsed);
       input.value = parsed.toFixed(2);
-      setText(
-        "ratesMsg",
-        `Valor do km da placa ${placa} atualizado para ${parsed.toFixed(2)}.`
-      );
+      setText("ratesMsg",`Valor do km da placa ${placa} atualizado para ${parsed.toFixed(2)}.`);
       await atualizarResumoSePossivel();
     } catch (e) {
       console.error(e);
-      setText(
-        "ratesMsg",
-        "Falha ao salvar o valor do km. Verifique a conexão e tente novamente."
-      );
+      setText("ratesMsg","Falha ao salvar o valor do km. Verifique a conexão e tente novamente.");
     }
   }
 
@@ -441,10 +446,7 @@
       setText("msg", "Salvando fechamento...");
       const json = await fechar(inicio, fim);
       const dados = json?.inseridos || [];
-      const soma_geral = dados.reduce(
-        (s, item) => s + Number(item.total_pagar || 0),
-        0
-      );
+      const soma_geral = dados.reduce((s, item) => s + Number(item.total_pagar || 0), 0);
       renderTabela({ dados, soma_geral });
       setText(
         "msg",
@@ -452,38 +454,44 @@
           ? "Fechamento salvo com sucesso. Confira o resumo abaixo."
           : "Fechamento salvo, porém nenhuma viagem foi encontrada nesse período."
       );
-      await loadHistorico(); // mantém para atualizar a grade de históricos
+      await loadHistorico(); // atualiza a grade
     } catch (e) {
       console.error(e);
       setText("msg", "Falha ao salvar fechamento.");
     }
   };
 
-  // Listener para excluir itens do histórico
-  document
-    .querySelector("#tblHistorico tbody")
-    .addEventListener("click", async (ev) => {
-      if (!ev.target.matches("button[data-excluir]")) return;
-      const inicio = ev.target.getAttribute("data-inicio");
-      const fim = ev.target.getAttribute("data-fim");
-      if (!inicio || !fim) return;
+  // Ações na tabela de histórico (excluir e relatório)
+  document.querySelector("#tblHistorico tbody").addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn) return;
+
+    const inicio = btn.getAttribute("data-inicio");
+    const fim    = btn.getAttribute("data-fim");
+    if (!inicio || !fim) return;
+
+    if (btn.matches("[data-excluir]")) {
       if (!confirm(`Excluir o fechamento de ${inicio} a ${fim}?`)) return;
       try {
         setText("historicoMsg", "Excluindo fechamento...");
         await excluirFechamento(inicio, fim);
         await loadHistorico();
-        setText(
-          "historicoMsg",
-          "Fechamento excluído. Você pode recalcular e salvar novamente."
-        );
+        setText("historicoMsg","Fechamento excluído. Você pode recalcular e salvar novamente.");
       } catch (e) {
         console.error(e);
-        setText(
-          "historicoMsg",
-          "Falha ao excluir o fechamento. Verifique a conexão e tente de novo."
-        );
+        setText("historicoMsg","Falha ao excluir o fechamento. Verifique a conexão e tente de novo.");
       }
-    });
+    } else if (btn.matches("[data-relatorio]")) {
+      try {
+        setText("historicoMsg","Gerando relatório em PDF. Ele será baixado automaticamente...");
+        await baixarRelatorio(inicio, fim);
+        setText("historicoMsg","Relatório gerado com sucesso. Verifique a pasta de downloads.");
+      } catch (e) {
+        console.error(e);
+        setText("historicoMsg","Falha ao gerar o relatório. Tente novamente em instantes.");
+      }
+    }
+  });
 
   // carregar tabelas iniciais
   loadRates();

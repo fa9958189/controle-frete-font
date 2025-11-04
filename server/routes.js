@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { all, run } from "./db.js";
 import { parseReport } from "./parseHtml.js";
+import { createSimplePdf } from "./simplePdf.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -106,6 +107,35 @@ const DATE_FIM_SQL = `
     ELSE date(fim)
   END
 `;
+
+function formatNumber(value, digits = 2) {
+  return Number(value || 0).toFixed(digits);
+}
+
+function formatCurrency(value) {
+  return `R$ ${formatNumber(value)}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("pt-BR");
+}
+
+function formatDateColumn(value) {
+  const str = formatDateTime(value);
+  return (str.length > 19 ? str.slice(0, 19) : str.padEnd(19, " "));
+}
+
+function formatKmColumn(value) {
+  return formatNumber(value).padStart(8, " ");
+}
+
+function formatCurrencyColumn(value) {
+  return formatNumber(value).padStart(10, " ");
+}
 
 // ===================== FRETE / RATES =====================
 router.post("/rate", async (req, res) => {
@@ -262,6 +292,112 @@ router.delete("/settlements", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Falha ao excluir fechamento" });
+  }
+});
+
+// ===================== RELATÓRIO (PDF) =====================
+router.get("/settlements/report", async (req, res) => {
+  const { inicio, fim } = req.query;
+  if (!inicio || !fim) {
+    return res
+      .status(400)
+      .json({ error: "inicio e fim são obrigatórios (YYYY-MM-DD)" });
+  }
+
+  try {
+    const settlements = await all(
+      `
+      SELECT placa, km_total, valor_km, total_pagar
+      FROM settlements
+      WHERE periodo_inicio = ? AND periodo_fim = ?
+      ORDER BY placa ASC
+    `,
+      [inicio, fim]
+    );
+
+    if (!settlements.length) {
+      return res
+        .status(404)
+        .json({ error: "Nenhum fechamento encontrado para o período" });
+    }
+
+    const linhas = [
+      "Relatório de Fechamento de Frete",
+      "",
+      `Período: ${inicio} a ${fim}`,
+      `Gerado em: ${new Date().toLocaleString("pt-BR")}`,
+      "",
+    ];
+
+    let totalGeral = 0;
+
+    for (const settle of settlements) {
+      const { placa, km_total, valor_km, total_pagar } = settle;
+      totalGeral += Number(total_pagar || 0);
+
+      linhas.push(`Placa ${placa}`);
+      linhas.push(`  Valor do km: ${formatCurrency(valor_km)}`);
+      linhas.push(`  KM total no período: ${formatNumber(km_total)} km`);
+      linhas.push(`  Total a pagar: ${formatCurrency(total_pagar)}`);
+      linhas.push("  Viagens:");
+      linhas.push(
+        "    Início              Fim                KM       Valor (R$)"
+      );
+      linhas.push(
+        "    -----------------------------------------------------------"
+      );
+
+      const trips = await all(
+        `
+        SELECT placa, kmPercurso, inicio, fim
+        FROM trips
+        WHERE placa = ?
+          AND ${DATE_INICIO_SQL} >= date(?)
+          AND ${DATE_FIM_SQL} <= date(?)
+        ORDER BY ${DATE_INICIO_SQL} ASC, ${DATE_FIM_SQL} ASC, id ASC
+      `,
+        [placa, inicio, fim]
+      );
+
+      if (!trips.length) {
+        linhas.push("    Nenhuma viagem encontrada para este período.");
+      } else {
+        trips.forEach((trip) => {
+          const valorViagem = Number(
+            (Number(trip.kmPercurso || 0) * Number(valor_km || 0)).toFixed(2)
+          );
+          const inicioFmt = formatDateColumn(trip.inicio);
+          const fimFmt = formatDateColumn(trip.fim);
+          const kmFmt = formatKmColumn(trip.kmPercurso);
+          const valorFmt = formatCurrencyColumn(valorViagem);
+          linhas.push(`    ${inicioFmt}  ${fimFmt}  ${kmFmt}  ${valorFmt}`);
+        });
+      }
+
+      linhas.push("");
+    }
+
+    linhas.push(`Total geral a pagar: ${formatCurrency(totalGeral)}`);
+
+    const pdf = createSimplePdf(linhas, {
+      fontSize: 11,
+      leading: 14,
+      marginLeft: 40,
+      marginTop: 50,
+      maxCharsPerLine: 110,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="fechamento-${inicio}-a-${fim}.pdf"`
+    );
+    res.send(pdf);
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Falha ao gerar relatório" });
+    }
   }
 });
 
