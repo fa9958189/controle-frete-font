@@ -295,6 +295,7 @@ router.delete("/settlements", async (req, res) => {
   }
 });
 
+// ===================== RELATÓRIO (PDF) =====================
 router.get("/settlements/report", async (req, res) => {
   const { inicio, fim } = req.query;
   if (!inicio || !fim) {
@@ -319,6 +320,7 @@ router.get("/settlements/report", async (req, res) => {
         .status(404)
         .json({ error: "Nenhum fechamento encontrado para o período" });
     }
+
     const linhas = [
       "Relatório de Fechamento de Frete",
       "",
