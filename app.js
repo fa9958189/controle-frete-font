@@ -1,9 +1,11 @@
 // ================== CONFIG ==================
 const BASE_URL = "http://localhost:3001"; // troque pelo seu domínio quando hospedar
+const AUTH_KEY = "pxfull-authenticated";
 
 // ================== ESTADO ==================
 let registros = []; // viagens exibidas
 let chart;
+let dashboardInicializado = false;
 
 // ================== UTILITÁRIAS ==================
 function toNumber(txt = "") {
@@ -15,6 +17,60 @@ function toNumber(txt = "") {
 const placaSelect = document.getElementById("placaSelect");
 const viagemSelect = document.getElementById("viagemSelect");
 const statusInfo = document.getElementById("statusInfo");
+const loginScreen = document.getElementById("loginScreen");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
+
+// ================== AUTENTICAÇÃO ==================
+function exibirDashboard() {
+  loginScreen?.classList.add("hidden");
+  dashboard?.classList.remove("hidden");
+  iniciarDashboard();
+}
+
+function exibirLogin() {
+  dashboard?.classList.add("hidden");
+  loginScreen?.classList.remove("hidden");
+}
+
+function iniciarDashboard() {
+  if (dashboardInicializado) return;
+  dashboardInicializado = true;
+  atualizarDashboard().catch(err => {
+    console.error(err);
+    if (statusInfo) {
+      statusInfo.textContent = "Erro ao carregar dados da API.";
+    }
+  });
+}
+
+loginForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const usuario = usernameInput?.value.trim();
+  const senha = passwordInput?.value ?? "";
+
+  if (usuario === "pxfull0" && senha === "1234") {
+    sessionStorage.setItem(AUTH_KEY, "true");
+    if (loginError) loginError.textContent = "";
+    exibirDashboard();
+    loginForm.reset();
+  } else {
+    if (loginError) loginError.textContent = "Usuário ou senha inválidos. Tente novamente.";
+    if (passwordInput) {
+      passwordInput.value = "";
+      passwordInput.focus();
+    }
+  }
+});
+
+if (sessionStorage.getItem(AUTH_KEY) === "true") {
+  exibirDashboard();
+} else {
+  exibirLogin();
+}
 
 // ================== API HELPERS ==================
 async function api(path, options = {}) {
@@ -217,8 +273,4 @@ document.getElementById("btnLimpar")?.addEventListener("click", async () => {
   await atualizarDashboard();
 });
 
-// ================== BOOT ==================
-atualizarDashboard().catch(err => {
-  console.error(err);
-  statusInfo.textContent = "Erro ao carregar dados da API.";
-});
+// Boot controlado pela autenticação (ver seção de autenticação acima)

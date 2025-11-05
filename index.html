@@ -2,87 +2,106 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>Controle de Frete – Dashboard</title>
+  <title>Gestão de Fretes por KM – Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="./style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <h1>Controle de Frete</h1>
-    <label class="file-btn">
-      <input id="fileInput" type="file" accept=".html,.htm" multiple>
-      Importar relatório (.html)
-    </label>
-    <nav>
-      <a class="file-btn" href="./fechamento.html" style="text-decoration:none">Ir para Fechamento</a>
-    </nav>
-  </header>
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1>Gestão de Fretes por KM</h1>
+      <p class="login-subtitle">Entre com suas credenciais para acessar o painel de controle.</p>
+      <form id="loginForm" class="login-form">
+        <label for="username">Usuário</label>
+        <input id="username" name="username" type="text" autocomplete="username" required placeholder="pxfull0">
 
-  <main class="container">
-    <section class="cards">
-      <div class="card">
-        <h3>Total de Placas</h3>
-        <p id="totalPlacas">0</p>
-      </div>
-      <div class="card">
-        <h3>Total KM Rodado</h3>
-        <p id="totalKm">0 km</p>
-      </div>
-      <div class="card">
-        <h3>Odômetro (último arquivo)</h3>
-        <p id="odometro">—</p>
-      </div>
-    </section>
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••">
 
-    <section class="grid">
-      <div class="panel">
-        <h2>KM por Placa</h2>
-        <canvas id="kmChart" height="120"></canvas>
+        <button type="submit" class="pill login-btn">Entrar</button>
+        <p id="loginError" class="login-error" role="alert"></p>
+      </form>
+    </div>
+  </div>
 
-        <hr style="border-color:#2a2f3a; margin:14px 0;">
+  <div id="dashboard" class="dashboard hidden">
+    <header class="topbar">
+      <h1>Gestão de Fretes por KM</h1>
+      <label class="file-btn">
+        <input id="fileInput" type="file" accept=".html,.htm" multiple>
+        Importar relatório (.html)
+      </label>
+      <nav>
+        <a class="file-btn" href="./fechamento.html" style="text-decoration:none">Ir para Fechamento</a>
+      </nav>
+    </header>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:10px;align-items:center">
-          <div>
-            <label for="placaSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Placa:</label>
-            <select id="placaSelect" class="input"></select>
+    <main class="container">
+      <section class="cards">
+        <div class="card">
+          <h3>Total de Placas</h3>
+          <p id="totalPlacas">0</p>
+        </div>
+        <div class="card">
+          <h3>Total KM Rodado</h3>
+          <p id="totalKm">0 km</p>
+        </div>
+        <div class="card">
+          <h3>Odômetro (último arquivo)</h3>
+          <p id="odometro">—</p>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>KM por Placa</h2>
+          <canvas id="kmChart" height="120"></canvas>
+
+          <hr style="border-color:#2a2f3a; margin:14px 0;">
+
+          <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:10px;align-items:center">
+            <div>
+              <label for="placaSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Placa:</label>
+              <select id="placaSelect" class="input"></select>
+            </div>
+            <div>
+              <label for="viagemSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Viagem:</label>
+              <select id="viagemSelect" class="input"></select>
+            </div>
+
+            <button id="btnCarregar" class="pill">Carregar viagem</button>
+            <button id="btnExcluir" class="pill danger">Excluir viagem</button>
+            <button id="btnLimpar" class="pill outline">Limpar TUDO</button>
           </div>
-          <div>
-            <label for="viagemSelect" style="display:block;color:#a9b0bb;font-size:12px;margin-bottom:6px">Viagem:</label>
-            <select id="viagemSelect" class="input"></select>
-          </div>
 
-          <button id="btnCarregar" class="pill">Carregar viagem</button>
-          <button id="btnExcluir" class="pill danger">Excluir viagem</button>
-          <button id="btnLimpar" class="pill outline">Limpar TUDO</button>
+          <p id="statusInfo" style="color:#a9b0bb;margin-top:8px;font-size:13px">Nenhuma viagem salva ainda.</p>
         </div>
 
-        <p id="statusInfo" style="color:#a9b0bb;margin-top:8px;font-size:13px">Nenhuma viagem salva ainda.</p>
-      </div>
 
+        <div class="panel">
+          <h2>Detalhes</h2>
+          <table class="tabela" id="tabela">
+            <thead>
+              <tr>
+                <th>Placa</th>
+                <th>Veículo/Dispositivo</th>
+                <th>KM do percurso</th>
+                <th>Período</th>
+                <th>KM rodado</th> <!-- era Odômetro -->
+                <th>Viagem</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
-      <div class="panel">
-        <h2>Detalhes</h2>
-        <table class="tabela" id="tabela">
-          <thead>
-            <tr>
-              <th>Placa</th>
-              <th>Veículo/Dispositivo</th>
-              <th>KM do percurso</th>
-              <th>Período</th>
-              <th>KM rodado</th> <!-- era Odômetro -->
-              <th>Viagem</th>
-          </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-
-  <footer class="rodape">
-    <small>PXFULL.</small>
-  </footer>
+    <footer class="rodape">
+      <small>PXFULL.</small>
+    </footer>
+  </div>
 
   <script src="./app.js"></script>
 </body>
